@@ -2,25 +2,34 @@ use futures_lite::{io, prelude::*};
 use serde::{de::DeserializeOwned, Serialize};
 
 use std::fmt::{self, Debug};
+use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::future::Future;
 
 use crate::{mime, Mime};
 use crate::{Status, StatusCode};
 
 /// An IO object for use with Body io callbacks
-pub trait ReadWrite: Read + Write + Unpin + Send + Sync + 'static {}
-impl<T: Read + Write + Unpin + Send + Sync + 'static> ReadWrite for T {}
+pub trait ReadWrite:
+    async_std::io::Read + async_std::io::Write + Unpin + Send + Sync + 'static
+{
+}
+impl<T: async_std::io::Read + async_std::io::Write + Unpin + Send + Sync + 'static> ReadWrite
+    for T
+{
+}
 
 trait IoCallback:
-    FnOnce(Box<dyn ReadWrite>) ->
-        Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync + 'static
-{}
-impl<T> IoCallback for T
-    where T: FnOnce(Box<dyn ReadWrite>) ->
-        Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync + 'static
-{}
+    FnOnce(Box<dyn ReadWrite>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync + 'static
+{
+}
+impl<T> IoCallback for T where
+    T: FnOnce(Box<dyn ReadWrite>) -> Pin<Box<dyn Future<Output = ()> + Send>>
+        + Send
+        + Sync
+        + 'static
+{
+}
 
 /// A handler for Body io.
 pub struct IoHandler {
@@ -35,15 +44,14 @@ impl IoHandler {
 }
 
 impl<T, Fut> From<T> for IoHandler
-    where
-        T: FnOnce(Box<dyn ReadWrite>) ->
-            Fut + Send + Sync + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
+where
+    T: FnOnce(Box<dyn ReadWrite>) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
 {
     fn from(callback: T) -> Self {
         let callback = move |io| {
             let callback: Pin<Box<dyn Future<Output = ()> + Send>> = Box::pin(callback(io));
-            
+
             callback
         };
         Self {
@@ -54,8 +62,7 @@ impl<T, Fut> From<T> for IoHandler
 
 impl fmt::Debug for IoHandler {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Upgrade")
-            .finish()
+        f.debug_struct("Upgrade").finish()
     }
 }
 
